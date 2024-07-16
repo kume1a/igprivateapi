@@ -1,16 +1,16 @@
 import 'dart:convert';
+import 'dart:developer' as dev;
 import 'dart:math';
+
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
-import 'package:http/retry.dart';
-import 'dart:developer' as dev;
 
 import 'exceptions.dart';
 import 'util/session.dart';
 import 'util/util.dart';
 import 'util/uuid_factory.dart';
 
-var SUPPORTED_CAPABILITIES = [
+List<Map<String, String>> supportedCapabilities = [
   {
     'value':
         '119.0,120.0,121.0,122.0,123.0,124.0,125.0,126.0,127.0,128.0,129.0,130.0,131.0,132.0,133.0,134.0,135.0,136.0,137.0,138.0,139.0,140.0,141.0,142.0',
@@ -198,11 +198,9 @@ class PreLoginFlow {
   }
 
   void _requestLog(http.Response response) {
-    requestLog(http.Request req) {
-      dev.log(
-        "$_private [${response.statusCode}] ${response.request?.method} ${response.request?.url} (${_deviceSettings['app_version']}, ${_deviceSettings['manufacturer']} ${_deviceSettings['model']})",
-      );
-    }
+    dev.log(
+      "$_private [${response.statusCode}] ${response.request?.method} ${response.request?.url} (${_deviceSettings['app_version']}, ${_deviceSettings['manufacturer']} ${_deviceSettings['model']})",
+    );
   }
 
   String _generateSignature(String data) {
@@ -262,7 +260,7 @@ class PreLoginFlow {
       'timezone_offset': _timezoneOffset.toString(),
       '_csrftoken': token,
       'device_id': _uuid,
-      'request_id': _uuid,
+      'request_id': _requestId,
       '_uuid': _uuid,
       'is_charging': random.nextInt(2),
       'is_dark_mode': 1,
@@ -293,7 +291,7 @@ class PreLoginFlow {
     String reason = 'pull_to_refresh',
   }) {
     Map<String, dynamic> data = {
-      'supported_capabilities_new': SUPPORTED_CAPABILITIES,
+      'supported_capabilities_new': supportedCapabilities,
       'reason': reason,
       'timezone_offset': _timezoneOffset.toString(),
       'tray_session_id': _traySessionId,
@@ -331,15 +329,6 @@ class PreLoginFlow {
         headers['Authorization'] = authorization;
       }
     }
-    Map<String, dynamic> kwargs = {
-      'data': data,
-      'params': params,
-      'login': login,
-      'with_signature': withSignature,
-      'headers': headers,
-      'extra_sig': extraSig,
-      'domain': domain,
-    };
     try {
       if (_delayRange.isNotEmpty) {
         await _randomDelay(delayRange: _delayRange);
@@ -409,7 +398,7 @@ class PreLoginFlow {
         if (withSignature) {
           data = _generateSignature(json.encode(data));
           if (extraSig != null) {
-            data += '&' + extraSig.join('&');
+            data += '&${extraSig.join("&")}';
           }
         }
         var response = await _private.post(
