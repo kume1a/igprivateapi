@@ -21,8 +21,8 @@ List<Map<String, String>> supportedCapabilities = [
   {'value': 'gyroscope_enabled', 'name': 'gyroscope'},
 ];
 
-class PreLoginFlow {
-  PreLoginFlow(
+class IGClient {
+  IGClient(
     this._uuidFactory, {
     List<int>? delayRange,
   }) {
@@ -78,6 +78,7 @@ class PreLoginFlow {
   final int _requestTimeout = 1000;
 
   int _privateRequestsCount = 0;
+  int _reloginAttempt = 0;
   dynamic _lastResponse;
 
   Future<void> _randomDelay({
@@ -310,6 +311,91 @@ class PreLoginFlow {
       'feed/reels_tray/',
       data: data,
     );
+  }
+
+  Future<bool> login({
+    required String username,
+    required String password,
+    bool relogin = false,
+    String verificationCode = '',
+  }) {
+    if (username.isEmpty || password.isEmpty) {
+      throw ArgumentError('Both username and password must be provided.');
+    }
+
+    if (relogin) {
+      _authorizationData.clear();
+      _private.headers.remove('Authorization');
+      _cookieDict.clear();
+      if (_reloginAttempt > 1) {
+        throw ReloginAttemptExceeded();
+      }
+      _reloginAttempt++;
+    }
+
+    if (userId != null && !relogin) {
+      // already logged in
+      return Future.value(true);
+    }
+
+    try {
+      preLoginFlow();
+    } on PleaseWaitFewMinutes {
+      dev.log('Ignore 429: Continue login');
+    } on ClientThrottledError {
+      dev.log('Ignore 429: Continue login');
+    } catch (e) {
+      dev.log(e.toString());
+    }
+
+    // The instagram application ignores this error and continues to log in (repeat this behavior)
+    String encPassword = passwordEncrypt(password);
+    Map<String, dynamic> data = {
+      'jazoest': generateJazoest(_phoneId),
+      'country_codes': '[{"country_code":"1","source":["default"]}]',
+      'phone_id': _phoneId,
+      'enc_password': encPassword,
+      'username': username,
+      'adid': _uuid,
+      'guid': _uuid,
+      'device_id': _androidDeviceId,
+      'google_tokens': '[]',
+      'login_attempt_count': '0',
+    };
+
+    try {
+      Map<String, dynamic>? logged = _privateRequest(
+        'accounts/login/',
+        data: data,
+        login: true,
+      );
+      _authorizationData = parseAuthorization(_lastResponse.headers['ig-set-authorization']);
+    } on TwoFactorRequired catch (e) {
+      if (verificationCode.isEmpty) {
+        throw TwoFactorRequired('$e (you did not provide verification_code for login method)');
+      }
+      String? twoFactorIdentifier = _lastResponse['two_factor_info']['two_factor_identifier'];
+      Map<String, dynamic> data = {
+        'verification_code': verificationCode,
+        'phone_id': _phoneId,
+        '_csrftoken': token,
+        'two_factor_identifier': twoFactorIdentifier,
+        'username': username,
+        'trust_this_device': '0',
+        'guid': _uuid,
+        'device_id': _androidDeviceId,
+        'waterfall_id': _uuidFactory.v4(),
+        'verification_method': '3',
+      };
+      Map<String, dynamic>? logged = _privateRequest(
+        'accounts/two_factor_login/',
+        data: data,
+        login: true,
+      );
+      _authorizationData = parseAuthorization(_lastResponse.headers['ig-set-authorization']);
+    } catch (e) {
+      dev.log(e.toString());
+    }
   }
 
   Future<Map<String, dynamic>?> _privateRequest(
