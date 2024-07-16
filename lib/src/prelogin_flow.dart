@@ -10,6 +10,17 @@ import 'util/session.dart';
 import 'util/util.dart';
 import 'util/uuid_factory.dart';
 
+var SUPPORTED_CAPABILITIES = [
+  {
+    'value':
+        '119.0,120.0,121.0,122.0,123.0,124.0,125.0,126.0,127.0,128.0,129.0,130.0,131.0,132.0,133.0,134.0,135.0,136.0,137.0,138.0,139.0,140.0,141.0,142.0',
+    'name': 'SUPPORTED_SDK_VERSIONS',
+  },
+  {'value': '14', 'name': 'FACE_TRACKER_VERSION'},
+  {'value': 'ETC2_COMPRESSION', 'name': 'COMPRESSION'},
+  {'value': 'gyroscope_enabled', 'name': 'gyroscope'},
+];
+
 class PreLoginFlow {
   PreLoginFlow(
     this._uuidFactory, {
@@ -17,6 +28,9 @@ class PreLoginFlow {
   }) {
     _uuid = _uuidFactory.v4();
     _phoneId = _uuidFactory.v4();
+    _sessionId = _uuidFactory.v4();
+    _traySessionId = _uuidFactory.v4();
+    _requestId = _uuidFactory.v4();
     _androidDeviceId = generateAndroidDeviceId();
     _userAgent =
         'Instagram ${_deviceSettings['app_version']} Android (${_deviceSettings['android_version']}/${_deviceSettings['android_release']}; ${_deviceSettings['dpi']}; ${_deviceSettings['resolution']}; ${_deviceSettings['manufacturer']}; ${_deviceSettings['model']}; ${_deviceSettings['device']}; ${_deviceSettings['cpu']}; ${_deviceSettings['locale']}; ${_deviceSettings['version_code']})';
@@ -48,6 +62,9 @@ class PreLoginFlow {
   String _userAgent = '';
   String _uuid = '';
   String _phoneId = '';
+  String _sessionId = '';
+  String _traySessionId = '';
+  String _requestId = '';
   String _androidDeviceId = '';
   String _token = '';
   String _mid = '';
@@ -214,6 +231,86 @@ class PreLoginFlow {
       'launcher/sync/',
       data: data,
       login: login,
+    );
+  }
+
+  Future<bool> loginFlow() async {
+    List<Map<String, dynamic>?> checkFlow = [];
+    await _getReelsTrayFeed(reason: 'cold_start');
+    await _getTimelineFeed(reason: 'cold_start_fetch');
+
+    return checkFlow.every((element) => element != null);
+  }
+
+  Future<Map<String, dynamic>?> _getTimelineFeed({
+    String reason = 'pull_to_refresh',
+    String? maxId,
+  }) {
+    Map<String, String> headers = {
+      'X-Ads-Opt-Out': '0',
+      'X-DEVICE-ID': _uuid,
+      'X-CM-Bandwidth-KBPS': '-1.000',
+      'X-CM-Latency': random.nextInt(5).toString(),
+    };
+
+    Map<String, dynamic> data = {
+      'has_camera_permission': '1',
+      'feed_view_info': '[]',
+      'phone_id': _phoneId,
+      'reason': reason,
+      'battery_level': 100,
+      'timezone_offset': _timezoneOffset.toString(),
+      '_csrftoken': token,
+      'device_id': _uuid,
+      'request_id': _uuid,
+      '_uuid': _uuid,
+      'is_charging': random.nextInt(2),
+      'is_dark_mode': 1,
+      'will_sound_on': random.nextInt(2),
+      'session_id': _sessionId,
+      'bloks_versioning_id': _bloksVersioningId,
+    };
+
+    if (reason == 'pull_to_refresh' || reason == 'auto_refresh') {
+      data['is_pull_to_refresh'] = '1';
+    } else {
+      data['is_pull_to_refresh'] = '0';
+    }
+
+    if (maxId != null) {
+      data['max_id'] = maxId;
+    }
+
+    return _privateRequest(
+      'feed/timeline/',
+      data: data,
+      withSignature: false,
+      headers: headers,
+    );
+  }
+
+  Future<Map<String, dynamic>?> _getReelsTrayFeed({
+    String reason = 'pull_to_refresh',
+  }) {
+    Map<String, dynamic> data = {
+      'supported_capabilities_new': SUPPORTED_CAPABILITIES,
+      'reason': reason,
+      'timezone_offset': _timezoneOffset.toString(),
+      'tray_session_id': _traySessionId,
+      'request_id': _uuid,
+      '_uuid': _uuid,
+      'page_size': 50,
+    };
+
+    if (reason == 'cold_start') {
+      data['reel_tray_impressions'] = {};
+    } else {
+      data['reel_tray_impressions'] = {userId.toString(): DateTime.now().millisecondsSinceEpoch.toString()};
+    }
+
+    return _privateRequest(
+      'feed/reels_tray/',
+      data: data,
     );
   }
 
