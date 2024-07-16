@@ -37,11 +37,12 @@ class ClientGraphqlError extends ClientError {
 }
 
 class ClientJSONDecodeError extends ClientError {
-  ClientJSONDecodeError() : super(message: 'Raised due to json decoding issues');
+  ClientJSONDecodeError(String? message) : super(message: message ?? 'Raised due to json decoding issues');
 }
 
 class ClientConnectionError extends ClientError {
-  ClientConnectionError() : super(message: 'Raised due to network connectivity-related issues');
+  ClientConnectionError(String? message)
+      : super(message: message ?? 'Raised due to network connectivity-related issues');
 }
 
 class ClientBadRequestError extends ClientError {

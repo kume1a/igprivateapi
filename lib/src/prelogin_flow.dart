@@ -1,9 +1,12 @@
 import 'dart:convert';
 import 'dart:math';
+import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
+import 'package:http/retry.dart';
 import 'dart:developer' as dev;
 
 import 'exceptions.dart';
+import 'util/session.dart';
 import 'util/util.dart';
 import 'util/uuid_factory.dart';
 
@@ -12,19 +15,51 @@ class PreLoginFlow {
     this._uuidFactory, {
     List<int>? delayRange,
   }) {
-    _uuid = _uuidFactory.v4;
+    _uuid = _uuidFactory.v4();
+    _phoneId = _uuidFactory.v4();
+    _androidDeviceId = generateAndroidDeviceId();
+    _userAgent =
+        'Instagram ${_deviceSettings['app_version']} Android (${_deviceSettings['android_version']}/${_deviceSettings['android_release']}; ${_deviceSettings['dpi']}; ${_deviceSettings['resolution']}; ${_deviceSettings['manufacturer']}; ${_deviceSettings['model']}; ${_deviceSettings['device']}; ${_deviceSettings['cpu']}; ${_deviceSettings['locale']}; ${_deviceSettings['version_code']})';
 
     _delayRange = delayRange ?? [1, 3];
+
+    _private = Session();
   }
 
   final UuidFactory _uuidFactory;
 
   late final List<int> _delayRange;
+  late final Session _private;
 
   final Map<String, String> _cookieDict = {};
   final Map<String, String> _authorizationData = {};
+  final Map<String, dynamic> _deviceSettings = {
+    'app_version': '269.0.0.18.75',
+    'android_version': 26,
+    'android_release': '8.0.0',
+    'dpi': '480dpi',
+    'resolution': '1080x1920',
+    'manufacturer': 'OnePlus',
+    'device': 'devitron',
+    'model': '6T Dev',
+    'cpu': 'qcom',
+    'version_code': '314665256',
+  };
+  String _userAgent = '';
   String _uuid = '';
+  String _phoneId = '';
+  String _androidDeviceId = '';
   String _token = '';
+  String _mid = '';
+  final int _timezoneOffset = -14400; // New York, GMT-4 in seconds
+  final String _locale = 'en_US';
+  final String _country = 'US';
+  final String _bloksVersioningId =
+      'ce555e5500576acd8e84a66018f54a05720f2dce29f0bb5a1f97f0c10d6fac48'; // this param is constant and will change by Instagram app version
+  final String _appId = '567067343352427';
+  final String _domain = 'i.instagram.com';
+  final int _requestTimeout = 1000;
+
   int _privateRequestsCount = 0;
   dynamic _lastResponse;
 
@@ -59,6 +94,12 @@ class PreLoginFlow {
     return _token;
   }
 
+  String get mid {
+    final def = _cookieDict['mid'] ?? '';
+
+    return _mid.isNotEmpty ? _mid : def;
+  }
+
   String get authorization {
     if (_authorizationData.isNotEmpty) {
       String b64part = base64.encode(json.encode(_authorizationData).codeUnits);
@@ -66,6 +107,89 @@ class PreLoginFlow {
       return 'Bearer IGT:2:$b64part';
     }
     return '';
+  }
+
+  String generateAndroidDeviceId() {
+    return 'android-${sha256.convert(utf8.encode(DateTime.now().millisecondsSinceEpoch.toString())).toString().substring(0, 16)}';
+  }
+
+  Map<String, String> get _baseHeaders {
+    String locale = _locale.replaceAll('-', '_');
+    List<String> acceptLanguage = ['en-US'];
+    if (locale.isNotEmpty) {
+      String lang = locale.replaceAll('_', '-');
+      if (!acceptLanguage.contains(lang)) {
+        acceptLanguage.insert(0, lang);
+      }
+    }
+    Map<String, String> headers = {
+      'X-IG-App-Locale': locale,
+      'X-IG-Device-Locale': locale,
+      'X-IG-Mapped-Locale': locale,
+      'X-Pigeon-Session-Id': _uuidFactory.v4(prefix: 'UFS-', suffix: '-1'),
+      'X-Pigeon-Rawclienttime': DateTime.now().millisecondsSinceEpoch.toString(),
+      'X-IG-Bandwidth-Speed-KBPS': (Random().nextInt(5000) + 2500).toString(),
+      'X-IG-Bandwidth-TotalBytes-B': (Random().nextInt(85000000) + 5000000).toString(),
+      'X-IG-Bandwidth-TotalTime-MS': (Random().nextInt(7000) + 2000).toString(),
+      'X-IG-App-Startup-Country': _country.toUpperCase(),
+      'X-Bloks-Version-Id': _bloksVersioningId,
+      'X-IG-WWW-Claim': '0',
+      'X-Bloks-Is-Layout-RTL': 'false',
+      'X-Bloks-Is-Panorama-Enabled': 'true',
+      'X-IG-Device-ID': _uuid,
+      'X-IG-Family-Device-ID': _phoneId,
+      'X-IG-Android-ID': _androidDeviceId,
+      'X-IG-Timezone-Offset': _timezoneOffset.toString(),
+      'X-IG-Connection-Type': 'WIFI',
+      'X-IG-Capabilities': '3brTvx0=',
+      'X-IG-App-ID': _appId,
+      'Priority': 'u=3',
+      'User-Agent': _userAgent,
+      'Accept-Language': acceptLanguage.join(', '),
+      'X-MID': mid,
+      'Accept-Encoding': 'gzip, deflate',
+      'Host': _domain,
+      'X-FB-HTTP-Engine': 'Liger',
+      'Connection': 'keep-alive',
+      'X-FB-Client-IP': 'True',
+      'X-FB-Server-Cluster': 'True',
+      'IG-INTENDED-USER-ID': (userId ?? 0).toString(),
+      'X-IG-Nav-Chain': '9MV:self_profile:2,ProfileMediaTabFragment:self_profile:3,9Xf:self_following:4',
+      'X-IG-SALT-IDS': (Random().nextInt(100100000) + 1061162222).toString(),
+    };
+    if (userId != null) {
+      int nextYear = DateTime.now().add(const Duration(days: 365)).millisecondsSinceEpoch;
+      headers.addAll({
+        'IG-U-DS-USER-ID': userId.toString(),
+        'IG-U-IG-DIRECT-REGION-HINT':
+            'LLA,$userId,$nextYear:01f7bae7d8b131877d8e0ae1493252280d72f6d0d554447cb1dc9049b6b2c507c08605b7',
+        'IG-U-SHBID':
+            '12695,$userId,$nextYear:01f778d9c9f7546cf3722578fbf9b85143cd6e5132723e5c93f40f55ca0459c8ef8a0d9f',
+        'IG-U-SHBTS':
+            '${DateTime.now().millisecondsSinceEpoch},$userId,$nextYear:01f7ace11925d0388080078d0282b75b8059844855da27e23c90a362270fddfb3fae7e28',
+        'IG-U-RUR':
+            'RVA,$userId,$nextYear:01f7f627f9ae4ce2874b2e04463efdb184340968b1b006fa88cb4cc69a942a04201e544c',
+      });
+    }
+    // if (_private.igURur != null) {
+    //   headers['IG-U-RUR'] = _private.igURur!;
+    // }
+    // if (_private.igWwwClaim != null) {
+    //   headers['X-IG-WWW-Claim'] = _private.igWwwClaim!;
+    // }
+    return headers;
+  }
+
+  void _requestLog(http.Response response) {
+    requestLog(http.Request req) {
+      dev.log(
+        "$_private [${response.statusCode}] ${response.request?.method} ${response.request?.url} (${_deviceSettings['app_version']}, ${_deviceSettings['manufacturer']} ${_deviceSettings['model']})",
+      );
+    }
+  }
+
+  String _generateSignature(String data) {
+    return 'signed_body=SIGNATURE.${Uri.encodeComponent(data)}';
   }
 
   Future<bool> preLoginFlow() async {
@@ -96,7 +220,7 @@ class PreLoginFlow {
   Future<Map<String, dynamic>?> _privateRequest(
     String endpoint, {
     Map<String, dynamic>? data,
-    Map<String, dynamic>? params,
+    Map<String, String>? params,
     bool login = false,
     bool withSignature = true,
     Map<String, String>? headers,
@@ -153,106 +277,94 @@ class PreLoginFlow {
     return null;
   }
 
-  // Future<Map<String, dynamic>> _sendPrivateRequest(
-  //   String endpoint, {
-  //   Map<String, dynamic>? data,
-  //   Map<String, dynamic>? params,
-  //   bool login = false,
-  //   bool withSignature = true,
-  //   Map<String, String>? headers,
-  //   dynamic extraSig,
-  //   String? domain,
-  // }) async {
-  //   _lastResponse = null;
-  //   Map<String, dynamic> lastJson = {};
-  //   _private.headers.addAll(_baseHeaders);
-  //   if (headers != null) {
-  //     _private.headers.addAll(headers);
-  //   }
-  //   if (!login) {
-  //     await Future.delayed(Duration(seconds: _requestTimeout));
-  //   }
-  //   try {
-  //     if (!endpoint.startsWith('/')) {
-  //       endpoint = '/v1/$endpoint';
-  //     }
+  Future<Map<String, dynamic>> _sendPrivateRequest(
+    String endpoint, {
+    dynamic data,
+    Map<String, String>? params,
+    bool login = false,
+    bool withSignature = true,
+    Map<String, String>? headers,
+    dynamic extraSig,
+    String? domain,
+  }) async {
+    _lastResponse = null;
+    Map<String, dynamic> lastJson = {};
+    _private.headers.addAll(_baseHeaders);
+    if (headers != null) {
+      _private.headers.addAll(headers);
+    }
+    if (!login) {
+      await Future.delayed(Duration(seconds: _requestTimeout));
+    }
+    try {
+      if (!endpoint.startsWith('/')) {
+        endpoint = '/v1/$endpoint';
+      }
 
-  //     if (endpoint == '/challenge/') {
-  //       endpoint = '/v1/challenge/';
-  //     }
+      if (endpoint == '/challenge/') {
+        endpoint = '/v1/challenge/';
+      }
 
-  //     String apiUrl = 'https://${domain ?? config.API_DOMAIN}/api$endpoint';
-  //     logger.info(apiUrl);
-  //     if (data != null) {
-  //       _private.headers['Content-Type'] = 'application/x-www-form-urlencoded; charset=UTF-8';
-  //       if (withSignature) {
-  //         data = generateSignature(json.encode(data));
-  //         if (extraSig != null) {
-  //           data += '&' + extraSig.join('&');
-  //         }
-  //       }
-  //       var response = await _private.post(
-  //         apiUrl,
-  //         body: data,
-  //         headers: _private.headers,
-  //         params: params,
-  //         proxies: _private.proxies,
-  //       );
-  //       logger.debug(
-  //         'private_request ${response.statusCode}: ${response.url} (${response.body})',
-  //       );
-  //       var mid = response.headers['ig-set-x-mid'];
-  //       if (mid != null) {
-  //         _mid = mid;
-  //       }
-  //       _requestLog(response);
-  //       _lastResponse = response;
-  //       response.raiseForStatus();
-  //       lastJson = json.decode(response.body);
-  //       logger.debug('last_json $lastJson');
-  //     } else {
-  //       _private.headers.remove('Content-Type');
-  //       var response = await _private.get(
-  //         apiUrl,
-  //         headers: _private.headers,
-  //         params: params,
-  //         proxies: _private.proxies,
-  //       );
-  //       logger.debug(
-  //         'private_request ${response.statusCode}: ${response.url} (${response.body})',
-  //       );
-  //       var mid = response.headers['ig-set-x-mid'];
-  //       if (mid != null) {
-  //         _mid = mid;
-  //       }
-  //       _requestLog(response);
-  //       _lastResponse = response;
-  //       response.raiseForStatus();
-  //       lastJson = json.decode(response.body);
-  //       logger.debug('last_json $lastJson');
-  //     }
-  //   } on FormatException catch (e) {
-  //     logger.error(
-  //       'Status ${_lastResponse.statusCode}: JSONDecodeError in private_request (user_id=$_userId, endpoint=$endpoint) >>> ${_lastResponse.body}',
-  //     );
-  //     throw ClientJSONDecodeError(
-  //       'JSONDecodeError $e while opening ${_lastResponse.url}',
-  //       response: _lastResponse,
-  //     );
-  //   } on http.ClientException catch (e) {
-  //     throw ClientConnectionError('${e.runtimeType} $e');
-  //   } on http.HTTPException catch (e) {
-  //     throw ClientError(e, response: _lastResponse, lastJson: lastJson);
-  //   } on http.TimeoutException catch (e) {
-  //     throw ClientRequestTimeout(e, response: _lastResponse, lastJson: lastJson);
-  //   } on http.Response catch (e) {
-  //     throw ClientError(e, response: _lastResponse, lastJson: lastJson);
-  //   }
-  //   if (lastJson.containsKey('status') && lastJson['status'] == 'fail') {
-  //     throw ClientError(response: _lastResponse, lastJson: lastJson);
-  //   } else if (lastJson.containsKey('error_title')) {
-  //     throw ClientError(response: _lastResponse, lastJson: lastJson);
-  //   }
-  //   return lastJson;
-  // }
+      String apiUrl = 'https://$domain/api$endpoint';
+      dev.log(apiUrl);
+      if (data != null) {
+        _private.headers['Content-Type'] = 'application/x-www-form-urlencoded; charset=UTF-8';
+        if (withSignature) {
+          data = _generateSignature(json.encode(data));
+          if (extraSig != null) {
+            data += '&' + extraSig.join('&');
+          }
+        }
+        var response = await _private.post(
+          Uri.parse(apiUrl),
+          body: data,
+          params: params,
+          // proxies: _private.proxies,
+        );
+        dev.log('private_request ${response.statusCode}: ${response.request?.url} (${response.body})');
+        var mid = response.headers['ig-set-x-mid'];
+        if (mid != null) {
+          _mid = mid;
+        }
+        _requestLog(response);
+        _lastResponse = response;
+        lastJson = json.decode(response.body);
+        dev.log('last_json $lastJson');
+      } else {
+        _private.headers.remove('Content-Type');
+        var response = await _private.get(
+          Uri.parse(apiUrl),
+          params: params,
+          // proxies: _private.proxies,
+        );
+        dev.log('private_request ${response.statusCode}: ${response.request?.url} (${response.body})');
+        var mid = response.headers['ig-set-x-mid'];
+        if (mid != null) {
+          _mid = mid;
+        }
+        _requestLog(response);
+        _lastResponse = response;
+        // response.raiseForStatus();
+        lastJson = json.decode(response.body);
+        dev.log('last_json $lastJson');
+      }
+    } on FormatException catch (e) {
+      dev.log(
+        'Status ${_lastResponse.statusCode}: JSONDecodeError in private_request (user_id=$userId, endpoint=$endpoint) >>> ${_lastResponse.body}',
+      );
+      throw ClientJSONDecodeError(
+        'JSONDecodeError $e while opening ${_lastResponse.url}',
+        // response: _lastResponse,
+      );
+    } on http.ClientException catch (e) {
+      throw ClientConnectionError('${e.runtimeType} $e');
+    }
+
+    if (lastJson.containsKey('status') && lastJson['status'] == 'fail') {
+      throw ClientError(response: _lastResponse);
+    } else if (lastJson.containsKey('error_title')) {
+      throw ClientError(response: _lastResponse);
+    }
+    return lastJson;
+  }
 }
