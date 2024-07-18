@@ -188,8 +188,8 @@ class IGClient {
   }
 
   void _requestLog(http.Response response) {
-    dev.log(
-      "$_private [${response.statusCode}] ${response.request?.method} ${response.request?.url} (${_deviceSettings['app_version']}, ${_deviceSettings['manufacturer']} ${_deviceSettings['model']})",
+    print(
+      "[${response.statusCode}] ${response.request?.method} ${response.request?.url} (${_deviceSettings['app_version']}, ${_deviceSettings['manufacturer']} ${_deviceSettings['model']})",
     );
   }
 
@@ -330,15 +330,15 @@ class IGClient {
     try {
       preLoginFlow();
     } on PleaseWaitFewMinutes {
-      dev.log('Ignore 429: Continue login');
+      print('Ignore 429: Continue login');
     } on ClientThrottledError {
-      dev.log('Ignore 429: Continue login');
+      print('Ignore 429: Continue login');
     } catch (e) {
-      dev.log(e.toString());
+      print(e.toString());
     }
 
     // The instagram application ignores this error and continues to log in (repeat this behavior)
-    String encPassword = await passwordEncrypt(password);
+    String encPassword = await encryptPassword(password);
     Map<String, dynamic> data = {
       'jazoest': generateJazoest(_phoneId),
       'country_codes': '[{"country_code":"1","source":["default"]}]',
@@ -387,7 +387,7 @@ class IGClient {
 
       return true;
     } catch (e) {
-      dev.log(e.toString());
+      print(e.toString());
     }
 
     return false;
@@ -401,7 +401,7 @@ class IGClient {
       }
       return json.decode(utf8.decode(base64.decode(b64part)));
     } catch (e) {
-      dev.log(e.toString());
+      print(e.toString());
     }
     return {};
   }
@@ -439,7 +439,7 @@ class IGClient {
         domain: domain,
       );
     } on ClientRequestTimeout {
-      dev.log('Wait 60 seconds and try one more time (ClientRequestTimeout)');
+      print('Wait 60 seconds and try one more time (ClientRequestTimeout)');
       await Future.delayed(const Duration(seconds: 60));
       return _sendPrivateRequest(
         endpoint,
@@ -452,7 +452,7 @@ class IGClient {
         domain: domain,
       );
     } catch (e) {
-      dev.log('error sending private request $e');
+      print('error sending private request $e');
     }
     return null;
   }
@@ -485,8 +485,8 @@ class IGClient {
         endpoint = '/v1/challenge/';
       }
 
-      String apiUrl = 'https://$domain/api$endpoint';
-      dev.log(apiUrl);
+      String apiUrl = 'https://${domain ?? _domain}/api$endpoint';
+      print('sending private request to $apiUrl');
       if (data != null) {
         _private.headers['Content-Type'] = 'application/x-www-form-urlencoded; charset=UTF-8';
         if (withSignature) {
@@ -501,7 +501,7 @@ class IGClient {
           params: params,
           // proxies: _private.proxies,
         );
-        dev.log('private_request ${response.statusCode}: ${response.request?.url} (${response.body})');
+        print('private_request ${response.statusCode}: ${response.request?.url} (${response.body})');
         var mid = response.headers['ig-set-x-mid'];
         if (mid != null) {
           _mid = mid;
@@ -509,7 +509,7 @@ class IGClient {
         _requestLog(response);
         _lastResponse = response;
         lastJson = json.decode(response.body);
-        dev.log('last_json $lastJson');
+        print('last_json $lastJson');
       } else {
         _private.headers.remove('Content-Type');
         var response = await _private.get(
@@ -517,7 +517,7 @@ class IGClient {
           params: params,
           // proxies: _private.proxies,
         );
-        dev.log('private_request ${response.statusCode}: ${response.request?.url} (${response.body})');
+        print('private_request ${response.statusCode}: ${response.request?.url} (${response.body})');
         var mid = response.headers['ig-set-x-mid'];
         if (mid != null) {
           _mid = mid;
@@ -526,10 +526,10 @@ class IGClient {
         _lastResponse = response;
         // response.raiseForStatus();
         lastJson = json.decode(response.body);
-        dev.log('last_json $lastJson');
+        print('last_json $lastJson');
       }
     } on FormatException catch (e) {
-      dev.log(
+      print(
         'Status ${_lastResponse.statusCode}: JSONDecodeError in private_request (user_id=$userId, endpoint=$endpoint) >>> ${_lastResponse.body}',
       );
       throw ClientJSONDecodeError(

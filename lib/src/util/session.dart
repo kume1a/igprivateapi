@@ -46,7 +46,7 @@ class Session {
 
   Future<http.Response> post(
     Uri url, {
-    Map<String, dynamic>? body,
+    dynamic body,
     Map<String, String>? extraHeaders,
     Map<String, String>? params,
   }) async {
