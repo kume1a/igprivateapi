@@ -46,7 +46,7 @@ class IGClient {
   late final Session _private;
 
   final Map<String, String> _cookieDict = {};
-  final Map<String, String> _authorizationData = {};
+  Map<String, dynamic> _authorizationData = {};
   final Map<String, dynamic> _deviceSettings = {
     'app_version': '269.0.0.18.75',
     'android_version': 26,
@@ -80,17 +80,6 @@ class IGClient {
   int _privateRequestsCount = 0;
   int _reloginAttempt = 0;
   dynamic _lastResponse;
-
-  Future<void> _randomDelay({
-    required List<int> delayRange,
-  }) {
-    final random = Random();
-    final minSleep = delayRange[0];
-    final maxSleep = delayRange[1];
-    final delay = Duration(seconds: minSleep + random.nextInt(maxSleep - minSleep));
-
-    return Future.delayed(delay);
-  }
 
   int? get userId {
     String? userId = _cookieDict['ds_user_id'];
@@ -318,7 +307,7 @@ class IGClient {
     required String password,
     bool relogin = false,
     String verificationCode = '',
-  }) {
+  }) async {
     if (username.isEmpty || password.isEmpty) {
       throw ArgumentError('Both username and password must be provided.');
     }
@@ -349,7 +338,7 @@ class IGClient {
     }
 
     // The instagram application ignores this error and continues to log in (repeat this behavior)
-    String encPassword = passwordEncrypt(password);
+    String encPassword = await passwordEncrypt(password);
     Map<String, dynamic> data = {
       'jazoest': generateJazoest(_phoneId),
       'country_codes': '[{"country_code":"1","source":["default"]}]',
@@ -364,12 +353,14 @@ class IGClient {
     };
 
     try {
-      Map<String, dynamic>? logged = _privateRequest(
+      await _privateRequest(
         'accounts/login/',
         data: data,
         login: true,
       );
       _authorizationData = parseAuthorization(_lastResponse.headers['ig-set-authorization']);
+
+      return true;
     } on TwoFactorRequired catch (e) {
       if (verificationCode.isEmpty) {
         throw TwoFactorRequired('$e (you did not provide verification_code for login method)');
@@ -387,15 +378,32 @@ class IGClient {
         'waterfall_id': _uuidFactory.v4(),
         'verification_method': '3',
       };
-      Map<String, dynamic>? logged = _privateRequest(
+      await _privateRequest(
         'accounts/two_factor_login/',
         data: data,
         login: true,
       );
       _authorizationData = parseAuthorization(_lastResponse.headers['ig-set-authorization']);
+
+      return true;
     } catch (e) {
       dev.log(e.toString());
     }
+
+    return false;
+  }
+
+  Map<String, dynamic> parseAuthorization(String authorization) {
+    try {
+      String b64part = authorization.split(':').last;
+      if (b64part.isEmpty) {
+        return {};
+      }
+      return json.decode(utf8.decode(base64.decode(b64part)));
+    } catch (e) {
+      dev.log(e.toString());
+    }
+    return {};
   }
 
   Future<Map<String, dynamic>?> _privateRequest(
@@ -417,7 +425,7 @@ class IGClient {
     }
     try {
       if (_delayRange.isNotEmpty) {
-        await _randomDelay(delayRange: _delayRange);
+        await randomDelay(delayRange: _delayRange);
       }
       _privateRequestsCount++;
       return _sendPrivateRequest(

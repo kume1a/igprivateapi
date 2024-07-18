@@ -70,11 +70,13 @@ class ClientRequestTimeout extends ClientError {
 }
 
 class ClientIncompleteReadError extends ClientError {
-  ClientIncompleteReadError() : super(message: 'Raised due to incomplete read HTTP response');
+  ClientIncompleteReadError(String? message)
+      : super(message: message ?? 'Raised due to incomplete read HTTP response');
 }
 
 class ClientLoginRequired extends ClientError {
-  ClientLoginRequired() : super(message: 'Instagram redirect to https://www.instagram.com/accounts/login/');
+  ClientLoginRequired(String? message)
+      : super(message: message ?? 'Instagram redirect to https://www.instagram.com/accounts/login/');
 }
 
 class ReloginAttemptExceeded extends ClientError {}
@@ -190,7 +192,9 @@ class LocationError extends PrivateError {}
 
 class LocationNotFound extends LocationError {}
 
-class TwoFactorRequired extends PrivateError {}
+class TwoFactorRequired extends PrivateError {
+  TwoFactorRequired(String? message) : super(message: message);
+}
 
 class HighlightNotFound extends PrivateError {}
 

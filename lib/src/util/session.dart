@@ -2,7 +2,9 @@ import 'package:http/http.dart' as http;
 import 'package:http/retry.dart';
 
 class Session {
-  Session() {
+  Session({
+    Map<String, String> defaultHeaders = const {},
+  }) {
     _client = RetryClient(
       http.Client(),
       when: (res) =>
@@ -13,6 +15,8 @@ class Session {
               res.statusCode == 504) &&
           (res.request?.method == 'GET' || res.request?.method == 'POST'),
     );
+
+    headers.addAll(defaultHeaders);
   }
 
   late final http.Client _client;
