@@ -30,6 +30,7 @@ class IGClient {
     _phoneId = _uuidFactory.v4();
     _sessionId = _uuidFactory.v4();
     _traySessionId = _uuidFactory.v4();
+    _advertisingId = _uuidFactory.v4();
     _requestId = _uuidFactory.v4();
     _androidDeviceId = generateAndroidDeviceId();
     _userAgent =
@@ -64,6 +65,7 @@ class IGClient {
   String _phoneId = '';
   String _sessionId = '';
   String _traySessionId = '';
+  String _advertisingId = '';
   String _requestId = '';
   String _androidDeviceId = '';
   String _token = '';
@@ -71,6 +73,7 @@ class IGClient {
   final int _timezoneOffset = -14400; // New York, GMT-4 in seconds
   final String _locale = 'en_US';
   final String _country = 'US';
+  final String _countryCode = '1';
   final String _bloksVersioningId =
       'ce555e5500576acd8e84a66018f54a05720f2dce29f0bb5a1f97f0c10d6fac48'; // this param is constant and will change by Instagram app version
   final String _appId = '567067343352427';
@@ -152,7 +155,8 @@ class IGClient {
       'X-IG-App-ID': _appId,
       'Priority': 'u=3',
       'User-Agent': _userAgent,
-      'Accept-Language': acceptLanguage.join(', '),
+      // 'Accept-Language': acceptLanguage.join(', '),
+      'Accept-Language': 'en-US',
       'X-MID': mid,
       'Accept-Encoding': 'gzip, deflate',
       'Host': _domain,
@@ -160,7 +164,6 @@ class IGClient {
       'Connection': 'keep-alive',
       'X-FB-Client-IP': 'True',
       'X-FB-Server-Cluster': 'True',
-      'IG-INTENDED-USER-ID': (userId ?? 0).toString(),
       'X-IG-Nav-Chain': '9MV:self_profile:2,ProfileMediaTabFragment:self_profile:3,9Xf:self_following:4',
       'X-IG-SALT-IDS': (Random().nextInt(100100000) + 1061162222).toString(),
     };
@@ -176,8 +179,10 @@ class IGClient {
             '${DateTime.now().millisecondsSinceEpoch},$userId,$nextYear:01f7ace11925d0388080078d0282b75b8059844855da27e23c90a362270fddfb3fae7e28',
         'IG-U-RUR':
             'RVA,$userId,$nextYear:01f7f627f9ae4ce2874b2e04463efdb184340968b1b006fa88cb4cc69a942a04201e544c',
+        'IG-INTENDED-USER-ID': userId.toString(),
       });
     }
+
     // if (_private.igURur != null) {
     //   headers['IG-U-RUR'] = _private.igURur!;
     // }
@@ -334,18 +339,23 @@ class IGClient {
     } on ClientThrottledError {
       print('Ignore 429: Continue login');
     } catch (e) {
-      print(e.toString());
+      print('Error in preLoginFlow $e');
     }
 
     // The instagram application ignores this error and continues to log in (repeat this behavior)
     String encPassword = await encryptPassword(password);
+    print('encPassword = $encPassword');
+
+    // String encPassword =
+    //     '#PWD_INSTAGRAM:4:1721307945:AXWWHTnXZzIVFJR8VKcAAYzUrDaeQg8LIE83Oju/2x2W/BEBgmywdXxvQogbjM0Gbo4gagtvDM0FixukbUHRisoVcxwUieOayxwL0m0qyufo/hW7lS//27voL9n4KKchIfZFrqWmvCkPKawTmeIS+PvqzKjZeZeUdHxqUMe9/dbeyf53VSiTqppACj1W/oDsWBOAnHL3y0fJGjW7AcAdkUf50guQ9y8ft1zlxInR5krRrReX0F5qwaX/yzvO3T1CMWqtGe6KwFRKpsUL63V638fvqFf0C87N+kRv1vcEdTog0HGV5d29C4faWMQaOSo7GI2AL+WjHJ8V3Hv0NH9GAUZNv5DtcKJEaSanGye1k3NNe13/A/W8uyqjJfg5HNUyj+igUU54T63K1kocqQ7X';
+
     Map<String, dynamic> data = {
       'jazoest': generateJazoest(_phoneId),
-      'country_codes': '[{"country_code":"1","source":["default"]}]',
+      'country_codes': '[{"country_code":"$_countryCode","source":["default"]}]',
       'phone_id': _phoneId,
       'enc_password': encPassword,
       'username': username,
-      'adid': _uuid,
+      'adid': _advertisingId,
       'guid': _uuid,
       'device_id': _androidDeviceId,
       'google_tokens': '[]',
@@ -501,7 +511,8 @@ class IGClient {
           params: params,
           // proxies: _private.proxies,
         );
-        print('private_request ${response.statusCode}: ${response.request?.url} (${response.body})');
+        print(
+            'private_request ${response.statusCode}: ${response.request?.url} (${truncate(response.body, 500)}');
         var mid = response.headers['ig-set-x-mid'];
         if (mid != null) {
           _mid = mid;
@@ -517,7 +528,8 @@ class IGClient {
           params: params,
           // proxies: _private.proxies,
         );
-        print('private_request ${response.statusCode}: ${response.request?.url} (${response.body})');
+        print(
+            'private_request ${response.statusCode}: ${response.request?.url} (${truncate(response.body, 500)})');
         var mid = response.headers['ig-set-x-mid'];
         if (mid != null) {
           _mid = mid;
@@ -530,7 +542,7 @@ class IGClient {
       }
     } on FormatException catch (e) {
       print(
-        'Status ${_lastResponse.statusCode}: JSONDecodeError in private_request (user_id=$userId, endpoint=$endpoint) >>> ${_lastResponse.body}',
+        'Status ${_lastResponse.statusCode}: JSONDecodeError in private_request (user_id=$userId, endpoint=$endpoint) >>> ${truncate(_lastResponse.body, 500)}',
       );
       throw ClientJSONDecodeError(
         'JSONDecodeError $e while opening ${_lastResponse.url}',

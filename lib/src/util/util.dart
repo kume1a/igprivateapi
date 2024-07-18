@@ -80,7 +80,7 @@ Future<String> encryptPassword(String password) async {
 
   // AES Encryption
   final aesEncrypter = Encrypter(AES(Key(sessionKey), mode: AESMode.gcm, padding: null));
-  final aesEncrypted = aesEncrypter.encrypt(password + timestamp, iv: IV(iv));
+  final aesEncrypted = aesEncrypter.encrypt(password, iv: IV(iv));
 
   // Preparing the payload
   final sizeBuffer = Uint8List(2)..buffer.asByteData().setInt16(0, rsaEncrypted.length, Endian.little);
@@ -96,4 +96,11 @@ Future<String> encryptPassword(String password) async {
   // Encoding the payload
   final encodedPayload = base64Encode(payload);
   return '#PWD_INSTAGRAM:4:$timestamp:$encodedPayload';
+}
+
+String truncate(String text, int length) {
+  if (text.length <= length) {
+    return text;
+  }
+  return '${text.substring(0, length)}${text.length > length ? '...' : ''}';
 }
